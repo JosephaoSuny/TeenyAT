@@ -3,8 +3,10 @@
 #include <cstdlib>
 #include "tigr.h"
 #include "screen.h"
-#include "teenyat.h"
+#include "../teenyat.h"
 #include "util.h"
+
+#include "../tdebug/debugee.h"
 
 /*
  *  These are the start of the address ranges or the addresses themselves: 
@@ -150,6 +152,8 @@ int main(int argc, char *argv[])
         return 1;
     }
 
+    int debug = debugging();
+
     /* database fabulous lavender for our color model */
     initScreen(0xA81); 
 
@@ -171,6 +175,12 @@ int main(int argc, char *argv[])
         }
         tny_clock(&t);
         current_frame++;
+
+        if (debug == 0) {
+            if (update_debugger(&t) != 0) {
+                std::cerr << "Error occured trying to update the debugger\n";
+            };
+        }
     }
 
     tigrFree(window);

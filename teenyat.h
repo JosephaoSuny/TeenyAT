@@ -12,11 +12,13 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
 
 #else  // __cplusplus
 extern "C" {
 
 #include <cstdint>
+#include <cstdio>
 
 #endif // __cplusplus
 
