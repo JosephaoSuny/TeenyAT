@@ -1,24 +1,21 @@
 #include "../teenyat.h"
-#include <cstddef>
 #include <cstdio>
-#include <cstring>
-
-static teenyat* mem;
+#include <fcntl.h>
 
 #ifdef WIN32
 
 #else
+    #include <sys/stat.h>
+    #include <cstring>
     #include <unistd.h>
-    #include <fcntl.h>
     #include <sys/mman.h>
     #include <sys/file.h>
     #include <cerrno>
-    #include <cstdlib>
 
     static int fd = 0;
 
     inline int getSharedMemory() {
-        const auto flags = O_RDWR;
+        const auto flags = O_WRONLY;
         const char* name_start = "/t_debug_";
         const int name_start_len = 9;
         char name[name_start_len + 11];
@@ -26,19 +23,14 @@ static teenyat* mem;
         int ppid = getppid();
         sprintf(name + 9, "%d", ppid);
 
-        const auto fd = shm_open(name, flags, 0644);
+        const auto shared_fd = shm_open(name, flags, 0644);
     
-        if (fd < 0) {
+        if (shared_fd < 0) {
             printf("%s\n", strerror(errno));
             return errno;
         }
-    
-        auto shared_mem = mmap(NULL, sizeof(teenyat), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-        if (shared_mem == MAP_FAILED) {
-            printf("%s\n", strerror(errno));
-            return -1;
-        }
-        mem = (teenyat*) shared_mem;
+
+        fd = shared_fd;
     
         return 0;
     }
@@ -46,15 +38,15 @@ static teenyat* mem;
     inline int update_shared_mem(teenyat* teeny) {
         int result = 0;
 
-        if (fd == 0) return 0;
-
         result = flock(fd, LOCK_SH);
         if (result != 0) {
             return errno;
         };
 
-        memcpy(mem, teeny, sizeof(teenyat));
-        mem->initialized = true;
+        result = write(fd, teeny, sizeof(teenyat));
+        if (result < 0) {
+            return errno;
+        };
 
         result = flock(fd, LOCK_UN);
 

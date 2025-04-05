@@ -1,16 +1,13 @@
-#include <cstdlib>
-#include <cstring>
 #include <iostream>
 
 #include "../teenyat.h"
 
-namespace os {
-    #ifdef WIN32
+#ifdef WIN32
 
-    #else
-      #include "linux_debugger.hpp"
-    #endif
-}
+#else
+  #include "linux_debugger.hpp"
+#endif
+
 
 int main(int argc, char* argv[]) {
     os::Process process {};
@@ -22,7 +19,7 @@ int main(int argc, char* argv[]) {
     }
 
     os::SharedMemory memory = os::SharedMemory();
-    memory.create();
+    result = memory.create();
     
     if (result < 0) {
         std::cout << "Error while creating shared memory " << result << "\n";
