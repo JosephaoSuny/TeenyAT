@@ -1,11 +1,59 @@
 #include "../teenyat.h"
 
 #if defined (_WIN32) | defined (WIN32)
+    #include <Windows.h>
+
+    static HANDLE mutex = nullptr;
+    static HANDLE memory = nullptr;
+    static teenyat* mapping = nullptr;
+
     inline int getSharedMemory() {
+        const TCHAR name[] = TEXT("Global\\t_debug");
+        const TCHAR mName[] = TEXT("Global\\t_debug_mutex");
+
+        memory = OpenFileMapping(FILE_MAP_ALL_ACCESS, FALSE, name);
+
+        if (memory == nullptr) {
+            int error = GetLastError();
+            printf("%d\n", error);
+            return error;
+        }
+
+        printf("Memory opened\n");
+
+        mapping = (teenyat*) MapViewOfFile(memory, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(teenyat));
+
+        if (mapping == nullptr) {
+            // TODO: Release created mapping if this fails
+            return GetLastError();
+        }
+
+        printf("Mapping created\n");
+
+        mutex = CreateMutexA(nullptr, false, mName);
+        if (mutex == nullptr) {
+            // TODO: Release created mapping AND unmap view
+            return GetLastError();
+        }
+
+        printf("Mutex opened\n");
+        
         return 0;
     }
 
     inline int update_shared_mem(teenyat* teeny) {
+        int result = 0;
+        
+        result = WaitForSingleObject(mutex, INFINITE);
+
+        if (result != WAIT_OBJECT_0) return GetLastError();
+
+        *mapping = *teeny;
+
+        result = ReleaseMutex(mutex);
+
+        if (result != 0) return GetLastError();
+
         return 0;
     }
 #else
