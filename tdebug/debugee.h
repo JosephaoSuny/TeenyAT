@@ -1,11 +1,14 @@
 #include "../teenyat.h"
-#include <cstdio>
-#include <fcntl.h>
 
-#ifdef WIN32
+#if defined (_WIN32) | defined (WIN32)
+    inline int getSharedMemory() {
+        return 0;
+    }
 
+    inline int update_shared_mem(teenyat* teeny) {
+        return 0;
+    }
 #else
-    #include <sys/stat.h>
     #include <cstring>
     #include <unistd.h>
     #include <sys/mman.h>
@@ -26,7 +29,6 @@
         const auto shared_fd = shm_open(name, flags, 0644);
     
         if (shared_fd < 0) {
-            printf("%s\n", strerror(errno));
             return errno;
         }
 
@@ -43,13 +45,12 @@
             return errno;
         };
 
-        result = write(fd, teeny, sizeof(teenyat));
+        result = pwrite(fd, teeny, sizeof(teenyat), 0);
         if (result < 0) {
             return errno;
         };
 
         result = flock(fd, LOCK_UN);
-
         if (result != 0) {
             return errno;
         };

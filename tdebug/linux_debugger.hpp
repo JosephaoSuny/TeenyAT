@@ -74,7 +74,15 @@ namespace os {
 
             int release() {
                 const auto name = "/t_debug_" + std::to_string(getpid());
-                int result = close(fd);
+                int result = munmap(t, sizeof(teenyat));
+                if (result < 0) {
+                    return errno;
+                }
+                result = close(fd);
+                if (result < 0) {
+                    return errno;
+                }
+                result = shm_unlink(name.c_str());
                 if (result < 0) {
                     return errno;
                 }
