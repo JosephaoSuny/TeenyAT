@@ -10,7 +10,6 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
-#include <time.h>
 
 #include "teenyat.h"
 
@@ -28,6 +27,12 @@
          return (counter.QuadPart * 1000000LL) / frequency.QuadPart;
      }
  #else
+	 /* Workaround for the clang compiler not allowing the usage of `clock_gettime` without __USE_POSIX199309 being defined */
+	 #ifdef __clang__
+	 #define __USE_POSIX199309 199309L
+	 #endif
+	 #include <time.h>
+
      #include <unistd.h>
      uint64_t us_clock(void) {
          struct timespec ts;
@@ -196,9 +201,9 @@ bool tny_reset(teenyat *t) {
 	/*
 	 * find a random seed
 	 */
-	uint64_t seed = (intptr_t)&time << 32;
-	seed ^= (intptr_t)&printf;
-	seed ^= time(NULL);
+	uint64_t seed = ((uint64_t)&time) << 32;
+	seed ^= (uint64_t)&printf;
+	seed ^= (uint64_t)time(NULL);
 	/* make seed "more" random w/ /dev/urandom if there */
 	FILE *f = fopen("/dev/urandom", "rb");
 	if(f != NULL) {
@@ -210,7 +215,7 @@ bool tny_reset(teenyat *t) {
 	}
 
 	/* Set increment to arbitrary odd constant that goes up by stream */
-	t->random.increment = ((intptr_t)&tny_reset + stream) | 1ULL;
+	t->random.increment = ((uint64_t)&tny_reset + stream) | 1ULL;
 	stream++;
 
 	/*
@@ -237,7 +242,7 @@ void tny_modify_port_levels(teenyat *t, bool is_system_request, tny_word data, b
 	 * on whether this is a system request (1s) or not (0s).
 	 */
 	tny_word src;
-	src.u = ~0 * is_system_request;
+	src.u = (tny_uword)(~0 * is_system_request);
 
 	/* We must know for which bits the source of the request and direction
 	 * bits match.  Eg, if the system wants to modify the port levels,
@@ -250,7 +255,9 @@ void tny_modify_port_levels(teenyat *t, bool is_system_request, tny_word data, b
 	tny_word old_port = *port;
 
 	/* Modify only those bits which should change */
+	#pragma GCC diagnostic ignored "-Wconversion"
 	port->u = (port->u & src_dir_matches.u) + (data.u & ~src_dir_matches.u);
+	#pragma GCC diagnostic warning "-Wconversion"
 
 	/* Launch the port change callback if any port bits were modify */
 	if((t->port_change != NULL) && (~src.u & ~dir.u & (old_port.u ^ port->u))) {
@@ -360,7 +367,7 @@ void tny_clock(teenyat *t) {
 			{
 				t->delay_cycles += TNY_BUS_DELAY;
 
-				tny_uword addr = t->reg[reg2].s + immed;
+				tny_uword addr = (tny_uword)(t->reg[reg2].s + immed);
 				switch(addr) {
 				case TNY_PORTA_ADDRESS:
 					t->reg[reg1] = t->port_a;
@@ -411,7 +418,7 @@ void tny_clock(teenyat *t) {
 			{
 				t->delay_cycles += TNY_BUS_DELAY;
 
-				tny_uword addr = t->reg[reg1].s + immed;
+				tny_uword addr = (tny_uword)(t->reg[reg1].s + immed);
 				switch(addr) {
 				case TNY_PORTA_ADDRESS:
 					tny_modify_port_levels(t, false, t->reg[reg2], true);
@@ -464,7 +471,7 @@ void tny_clock(teenyat *t) {
 			break;
 		case TNY_OPCODE_PSH:
 			t->reg[TNY_REG_SP].u &= TNY_MAX_RAM_ADDRESS;
-			t->ram[t->reg[TNY_REG_SP].u].u = t->reg[reg2].s + immed;
+			t->ram[t->reg[TNY_REG_SP].u].u = (tny_uword)(t->reg[reg2].s + immed);
 			t->reg[TNY_REG_SP].u--;
 			t->reg[TNY_REG_SP].u &= TNY_MAX_RAM_ADDRESS;
 			/*
@@ -496,7 +503,7 @@ void tny_clock(teenyat *t) {
 			{
 				tny_sword bit = t->reg[reg2].s + immed;
 				if(bit >= 0 && bit <= 15) {
-					t->reg[reg1].s &= ~(1 << bit);
+					t->reg[reg1].s &= (tny_sword)~(1 << bit);
 					set_elg_flags(t, t->reg[reg1].s);
 				}
 			}
@@ -515,7 +522,7 @@ void tny_clock(teenyat *t) {
 			t->ram[t->reg[TNY_REG_SP].u] = t->reg[TNY_REG_PC];
 			t->reg[TNY_REG_SP].u--;
 			t->reg[TNY_REG_SP].u &= TNY_MAX_RAM_ADDRESS;
-			set_pc(t, t->reg[reg2].s + immed);
+			set_pc(t, (tny_uword)(t->reg[reg2].s + immed));
 			/*
 			* To promote student use of registers, all bus operations,
 			* including RAM access comes with an extra penalty.
@@ -525,24 +532,24 @@ void tny_clock(teenyat *t) {
 		case TNY_OPCODE_ADD:
 			tmp = (uint32_t)(t->reg[reg1].s) + (uint32_t)((uint32_t)(t->reg[reg2].s) + (uint32_t)immed);
 			t->flags.carry = tmp & (1 << 16);
-			t->reg[reg1].s = tmp;
+			t->reg[reg1].s = (tny_sword) tmp;
 			set_elg_flags(t, t->reg[reg1].s);
 			break;
 		case TNY_OPCODE_SUB:
 			tmp = (uint32_t)(t->reg[reg1].s) - (uint32_t)((uint32_t)(t->reg[reg2].s) + (uint32_t)immed);
 			t->flags.carry = tmp & (1 << 16);
-			t->reg[reg1].s = tmp;
+			t->reg[reg1].s = (tny_sword) tmp;
 			set_elg_flags(t, t->reg[reg1].s);
 			break;
 		case TNY_OPCODE_MPY:
 			tmp = (uint32_t)(t->reg[reg1].s) * (uint32_t)((uint32_t)(t->reg[reg2].s) + (uint32_t)immed);
 			t->flags.carry = tmp & (1 << 16);
-			t->reg[reg1].s = tmp;
+			t->reg[reg1].s = (tny_sword) tmp;
 			set_elg_flags(t, t->reg[reg1].s);
 			break;
 		case TNY_OPCODE_DIV:
 			if(t->reg[reg2].s + immed != 0) {
-				t->reg[reg1].s /= t->reg[reg2].s + immed;
+				t->reg[reg1].s /= (tny_sword)(t->reg[reg2].s + immed);
 				set_elg_flags(t, t->reg[reg1].s);
 			}
 			else {
@@ -551,7 +558,9 @@ void tny_clock(teenyat *t) {
 			break;
 		case TNY_OPCODE_MOD:
 			if(t->reg[reg2].s + immed != 0) {
+				#pragma GCC diagnostic ignored "-Wconversion"
 				t->reg[reg1].s %= t->reg[reg2].s + immed;
+				#pragma GCC diagnostic warning "-Wconversion"
 				set_elg_flags(t, t->reg[reg1].s);
 			}
 			else {
@@ -614,11 +623,13 @@ void tny_clock(teenyat *t) {
 		case TNY_OPCODE_ROT:
 			{
 				/* calculate remainder as rotate could go around many times */
+				#pragma GCC diagnostic ignored "-Wconversion"
 				tny_sword bits_to_rotate = (t->reg[reg2].s + immed) % 16;
+				#pragma GCC diagnostic warning "-Wconversion"
 				if(bits_to_rotate < 0) {
 					/* rotate left */
 					bits_to_rotate *= -1;
-					tny_uword main_part = t->reg[reg1].u << bits_to_rotate;
+					tny_uword main_part = (tny_uword)(t->reg[reg1].u << bits_to_rotate);
 					tny_uword wrap_part = t->reg[reg1].u >> (16 - bits_to_rotate);
 					t->reg[reg1].u = main_part | wrap_part;
 					t->flags.carry = t->reg[reg1].u & (1 << 0);
@@ -626,7 +637,7 @@ void tny_clock(teenyat *t) {
 				else if(bits_to_rotate > 0) {
 					/* rotate right */
 					tny_uword main_part = t->reg[reg1].u >> bits_to_rotate;
-					tny_uword wrap_part = t->reg[reg1].u << (16 - bits_to_rotate);
+					tny_uword wrap_part = (tny_uword)(t->reg[reg1].u << (16 - bits_to_rotate));
 					t->reg[reg1].u = main_part | wrap_part;
 					t->flags.carry = t->reg[reg1].u & (1 << 15);
 				}
@@ -636,7 +647,7 @@ void tny_clock(teenyat *t) {
 		case TNY_OPCODE_NEG:
 			tmp = (uint32_t)0 - (uint32_t)(t->reg[reg1].s);
 			t->flags.carry = tmp & (1 << 16);
-			t->reg[reg1].s = tmp;
+			t->reg[reg1].s = (tny_sword)(tmp);
 			set_elg_flags(t, t->reg[reg1].s);
 			break;
 		case TNY_OPCODE_CMP:
@@ -665,24 +676,24 @@ void tny_clock(teenyat *t) {
 					condition_satisfied |= t->flags.greater;
 				}
 				if(!flags_checked || condition_satisfied) {
-					set_pc(t, t->reg[reg1].s + immed);
+					set_pc(t, (tny_uword)(t->reg[reg1].s + immed));
 				}
 			}
 			break;
 		case TNY_OPCODE_LUP:
 			tmp = (uint32_t)(t->reg[reg1].s) - 1;
 			t->flags.carry = tmp & (1 << 16);
-			t->reg[reg1].s = tmp;
+			t->reg[reg1].s = (tny_sword)(tmp);
 			set_elg_flags(t, (tny_sword)tmp);
 			if(tmp != 0) {
-				set_pc(t, t->reg[reg2].s + immed);
+				set_pc(t, (tny_uword)(t->reg[reg2].s + immed));
 			}
 			break;
 		case TNY_OPCODE_DLY:
 			{
 				tny_sword delay_cnt = t->reg[reg2].s + immed;
 				if(delay_cnt >= 1) {
-					t->delay_cycles = delay_cnt - 1; // current instruction already 1 cycle
+					t->delay_cycles = (unsigned)(delay_cnt - 1); // current instruction already 1 cycle
 				}
 			}
 			break;
@@ -706,7 +717,7 @@ void tny_clock(teenyat *t) {
 		uint64_t now_us = us_clock();
 		uint64_t us_elapsed = now_us - (t->clock_manager.pace_start);
 
-		t->clock_manager.clock_wait_time = ((t->clock_manager.clock_wait_time) * (t->clock_manager.initial_pace_cnt) / (t->clock_manager.pace_divisor)) / us_elapsed;
+		t->clock_manager.clock_wait_time = ((t->clock_manager.clock_wait_time) * ((uint64_t)t->clock_manager.initial_pace_cnt) / (t->clock_manager.pace_divisor)) / us_elapsed;
 
 		if((now_us - t->clock_manager.clock_epoch) > t->cycle_cnt) {
 			/* too slow, speed up by busy looping less */
@@ -748,10 +759,10 @@ tny_uword tny_random(teenyat *t) {
 	 */
 
     /* use top 5 bits of previous state to "randomly" rotate */
-    unsigned bitcnt_to_rotate = tmp >> 59;
+    unsigned bitcnt_to_rotate = (unsigned)(tmp >> 59);
 
     /* scramble the previous state and truncate to 16 bits */
-    uint32_t to_rotate = (tmp >> 18 ^ tmp) >> 27;
+    uint32_t to_rotate = (uint32_t)((tmp >> 18 ^ tmp) >> 27);
 
     /* return the right-rotated the scrambled previous state */
 	uint32_t result = to_rotate >> bitcnt_to_rotate;

@@ -16,6 +16,7 @@ edison/bin_assets.*
 # IDE stuff
 *.dSYM
 .vscode
+.clangd
 
 # Additional stuff
 *.bin
